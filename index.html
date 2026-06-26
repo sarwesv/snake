@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Snakes & Ladders</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1>Snakes &amp; Ladders</h1>
+        </header>
+
+        <div id="setup-screen">
+            <div class="setup-card">
+                <h2>New Game</h2>
+                <label>Number of players</label>
+                <div class="count-buttons">
+                    <button class="count-btn active" data-count="2">2</button>
+                    <button class="count-btn" data-count="3">3</button>
+                    <button class="count-btn" data-count="4">4</button>
+                    <button class="count-btn" data-count="5">5</button>
+                </div>
+                <div id="player-names-container"></div>
+                <button id="start-btn">Start Game</button>
+            </div>
+        </div>
+
+        <div id="game-screen" class="hidden">
+            <div id="board-container">
+                <div id="board"></div>
+                <svg id="game-svg" viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg"></svg>
+                <div id="token-layer"></div>
+            </div>
+            <div id="control-panel">
+                <div id="players-panel">
+                    <h3>Players</h3>
+                    <div id="player-cards"></div>
+                </div>
+                <div id="dice-panel">
+                    <div id="dice"><span id="dice-value">⚀</span></div>
+                    <button id="roll-btn">Roll Dice</button>
+                    <div id="turn-display"></div>
+                </div>
+                <div id="event-log">
+                    <h3>Events</h3>
+                    <div id="log-content"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="win-overlay" class="hidden">
+            <div class="win-modal">
+                <div class="confetti">🎉</div>
+                <h2>Winner!</h2>
+                <p id="win-message"></p>
+                <button id="new-game-btn">New Game</button>
+            </div>
+        </div>
+    </div>
+    <script src="game.js"></script>
+</body>
+</html>
