@@ -26,6 +26,7 @@ const SNAKE_STYLES = [
 
 let state = { players: [], current: 0, active: false, rolling: false };
 let selectedCount = 2;
+let tokenEls = {}; // player id → DOM element
 
 // ── Utilities ──────────────────────────────────────────────────────────────
 
@@ -104,7 +105,7 @@ document.getElementById('start-btn').addEventListener('click', () => {
     errorEl.classList.add('hidden');
 
     state.players = resolvedNames.map((name, i) => ({
-        id: i, name, color: COLORS[i], pos: 0
+        id: i, name, color: COLORS[i], pos: 0, onBoard: false
     }));
     state.current = 0;
     state.active  = true;
@@ -115,6 +116,7 @@ document.getElementById('start-btn').addEventListener('click', () => {
 
     buildBoard();
     drawOverlay();
+    initTokens();
     setDiceFace(1);
     renderAll();
     log(`Game on! ${state.players[0].name} goes first.`);
@@ -123,11 +125,22 @@ document.getElementById('start-btn').addEventListener('click', () => {
 // ── Exit game ──────────────────────────────────────────────────────────────
 
 document.getElementById('exit-btn').addEventListener('click', () => {
-    if (!confirm('Exit the current game and return to setup?')) return;
+    document.getElementById('exit-confirm').classList.remove('hidden');
+});
+
+document.getElementById('exit-confirm-yes').addEventListener('click', () => {
+    document.getElementById('exit-confirm').classList.add('hidden');
     resetToSetup();
 });
 
+document.getElementById('exit-confirm-no').addEventListener('click', () => {
+    document.getElementById('exit-confirm').classList.add('hidden');
+});
+
 function resetToSetup() {
+    // Kill any in-flight GSAP token animations
+    Object.values(tokenEls).forEach(t => gsap.killTweensOf(t));
+    tokenEls = {};
     document.getElementById('win-overlay').classList.add('hidden');
     document.getElementById('game-screen').classList.add('hidden');
     document.getElementById('setup-screen').classList.remove('hidden');
@@ -181,6 +194,9 @@ function drawOverlay() {
 
     const defs = makeSVGEl('defs');
     defs.innerHTML = `
+        <clipPath id="board-clip">
+            <rect x="0" y="0" width="500" height="500"/>
+        </clipPath>
         <filter id="snake-shadow" x="-30%" y="-30%" width="160%" height="160%">
             <feDropShadow dx="0" dy="2" stdDeviation="2.5"
                          flood-color="#000" flood-opacity="0.4"/>
@@ -188,7 +204,12 @@ function drawOverlay() {
     svg.appendChild(defs);
 
     drawLadders(svg);
-    drawSnakes(svg);
+
+    // Clip snakes strictly to the board area so nothing escapes the edges
+    const snakeClipGroup = makeSVGEl('g');
+    snakeClipGroup.setAttribute('clip-path', 'url(#board-clip)');
+    svg.appendChild(snakeClipGroup);
+    drawSnakes(snakeClipGroup);
 }
 
 function animateLine(el, delay) {
@@ -427,11 +448,15 @@ function drawSnakeHead(svg, headPos, cp1, style, delay) {
     tongue.setAttribute('stroke-linecap', 'round');
     g.appendChild(tongue);
 
-    svg.appendChild(g);
+    // Wrapper carries the static SVG transform (position + rotation).
+    // Inner g handles the scale-in animation only — no position/rotation conflict.
+    const wrapper = makeSVGEl('g');
+    wrapper.setAttribute('transform', `translate(${headPos.x},${headPos.y}) rotate(${faceDeg})`);
+    wrapper.appendChild(g);
+    svg.appendChild(wrapper);
 
-    // GSAP positions the group then scales it in
-    gsap.set(g, { x: headPos.x, y: headPos.y, rotation: faceDeg, transformOrigin: '0px 0px', scale: 0, opacity: 0 });
-    gsap.to(g,  { scale: 1, opacity: 1, duration: 0.55, ease: 'back.out(2)', delay, transformOrigin: '0px 0px' });
+    gsap.set(g, { scale: 0, opacity: 0, transformOrigin: '0px 0px' });
+    gsap.to(g,  { scale: 1, opacity: 1, duration: 0.55, ease: 'back.out(2)', delay });
 }
 
 // ── Dice ───────────────────────────────────────────────────────────────────
@@ -476,26 +501,54 @@ function renderPlayerCards() {
     });
 }
 
-function renderTokens() {
+function initTokens() {
     const layer = document.getElementById('token-layer');
     layer.innerHTML = '';
+    tokenEls = {};
+    state.players.forEach(p => {
+        const token = document.createElement('div');
+        token.className = 'token';
+        token.style.background = p.color;
+        token.textContent = p.name.charAt(0).toUpperCase();
+        gsap.set(token, { opacity: 0, left: '50%', top: '50%' });
+        layer.appendChild(token);
+        tokenEls[p.id] = token;
+    });
+}
+
+function renderTokens() {
+    // Build groups for tokens sharing the same square (for offset calculation)
     const posMap = {};
     state.players.forEach(p => {
         if (p.pos > 0) (posMap[p.pos] = posMap[p.pos] || []).push(p);
     });
-    for (const [posStr, group] of Object.entries(posMap)) {
-        const center = squareCenter(parseInt(posStr));
-        group.forEach((p, idx) => {
-            const offsetX = group.length > 1 ? (idx - (group.length - 1) / 2) * 16 : 0;
-            const token   = document.createElement('div');
-            token.className  = 'token';
-            token.style.background = p.color;
-            token.style.left = ((center.x + offsetX) / 500 * 100) + '%';
-            token.style.top  = (center.y / 500 * 100) + '%';
-            token.textContent = p.name.charAt(0).toUpperCase();
-            layer.appendChild(token);
-        });
-    }
+
+    state.players.forEach(p => {
+        const token = tokenEls[p.id];
+        if (!token) return;
+
+        if (p.pos === 0) {
+            gsap.to(token, { opacity: 0, duration: 0.2 });
+            return;
+        }
+
+        const group   = posMap[p.pos];
+        const idx     = group.indexOf(p);
+        const offsetX = group.length > 1 ? (idx - (group.length - 1) / 2) * 16 : 0;
+        const center  = squareCenter(p.pos);
+        const leftPct = `${(center.x + offsetX) / 500 * 100}%`;
+        const topPct  = `${center.y / 500 * 100}%`;
+
+        if (!p.onBoard) {
+            // First step off start: teleport then fade in
+            p.onBoard = true;
+            gsap.set(token, { left: leftPct, top: topPct });
+            gsap.to(token, { opacity: 1, duration: 0.3, ease: 'power2.out' });
+        } else {
+            // Already on board: slide to new square
+            gsap.to(token, { left: leftPct, top: topPct, opacity: 1, duration: 0.55, ease: 'power2.inOut' });
+        }
+    });
 }
 
 function updateTurnDisplay() {
@@ -554,7 +607,7 @@ function applyMove(roll) {
             const dest = SNAKES[target];
             log(`🐍 Snake! ${player.name} slides ${target} → ${dest}`);
             player.pos = dest;
-            setTimeout(() => { renderAll(); endTurn(); }, 650);
+            setTimeout(() => { renderAll(); endTurn(); }, 700);
 
         } else if (LADDERS[target]) {
             // Ladder: climb up and earn exactly one extra turn
@@ -570,7 +623,7 @@ function applyMove(roll) {
                     log(`🎉 ${player.name} gets an extra turn!`);
                     grantExtraTurn();
                 }
-            }, 650);
+            }, 700);
 
         } else if (target === 100) {
             handleWin(player);
@@ -583,7 +636,7 @@ function applyMove(roll) {
         } else {
             endTurn();
         }
-    }, 520);
+    }, 600);
 }
 
 function grantExtraTurn() {
