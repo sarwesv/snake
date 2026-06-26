@@ -510,14 +510,22 @@ function initTokens() {
         token.className = 'token';
         token.style.background = p.color;
         token.textContent = p.name.charAt(0).toUpperCase();
-        gsap.set(token, { opacity: 0, left: '50%', top: '50%' });
         layer.appendChild(token);
+        gsap.set(token, { left: 0, top: 0, opacity: 0 });
         tokenEls[p.id] = token;
     });
 }
 
-function renderTokens() {
-    // Build groups for tokens sharing the same square (for offset calculation)
+function tokenPixelPos(p, posMap) {
+    const scale   = document.getElementById('board-container').offsetWidth / 500;
+    const group   = posMap[p.pos];
+    const idx     = group.indexOf(p);
+    const offsetX = group.length > 1 ? (idx - (group.length - 1) / 2) * 16 : 0;
+    const center  = squareCenter(p.pos);
+    return { x: (center.x + offsetX) * scale, y: center.y * scale };
+}
+
+function renderTokens(instant = false) {
     const posMap = {};
     state.players.forEach(p => {
         if (p.pos > 0) (posMap[p.pos] = posMap[p.pos] || []).push(p);
@@ -528,28 +536,27 @@ function renderTokens() {
         if (!token) return;
 
         if (p.pos === 0) {
-            gsap.to(token, { opacity: 0, duration: 0.2 });
+            gsap.to(token, { opacity: 0, duration: 0.2, overwrite: 'auto' });
             return;
         }
 
-        const group   = posMap[p.pos];
-        const idx     = group.indexOf(p);
-        const offsetX = group.length > 1 ? (idx - (group.length - 1) / 2) * 16 : 0;
-        const center  = squareCenter(p.pos);
-        const leftPct = `${(center.x + offsetX) / 500 * 100}%`;
-        const topPct  = `${center.y / 500 * 100}%`;
+        const { x, y } = tokenPixelPos(p, posMap);
 
-        if (!p.onBoard) {
-            // First step off start: teleport then fade in
-            p.onBoard = true;
-            gsap.set(token, { left: leftPct, top: topPct });
-            gsap.to(token, { opacity: 1, duration: 0.3, ease: 'power2.out' });
+        if (!p.onBoard || instant) {
+            if (!p.onBoard) p.onBoard = true;
+            gsap.set(token, { left: x, top: y });
+            if (!instant) gsap.to(token, { opacity: 1, duration: 0.3, ease: 'power2.out', overwrite: 'auto' });
         } else {
-            // Already on board: slide to new square
-            gsap.to(token, { left: leftPct, top: topPct, opacity: 1, duration: 0.55, ease: 'power2.inOut' });
+            // Both start and end are pixels — GSAP interpolates cleanly with no unit mismatch
+            gsap.to(token, { left: x, top: y, opacity: 1, duration: 0.55, ease: 'power2.inOut', overwrite: 'auto' });
         }
     });
 }
+
+// Reposition tokens instantly when the board scales on resize
+window.addEventListener('resize', () => {
+    if (state.active) renderTokens(true);
+});
 
 function updateTurnDisplay() {
     const el = document.getElementById('turn-display');
